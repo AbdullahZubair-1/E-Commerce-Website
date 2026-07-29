@@ -1,0 +1,46 @@
+# --- Secrets: never commit real .env files ---
+.env
+backend/.env
+frontend/.env
+frontend-food/.env
+voice-agent/.env
+!.env.example
+!**/.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+backend/venv/
+voice-agent/venv/
+.pytest_cache/
+backend/tests/__pycache__/
+
+# --- Node / frontend ---
+node_modules/
+dist/
+.vite/
+frontend/node_modules/
+frontend-food/node_modules/
+
+# --- Playwright ---
+test-results/
+playwright-report/
+frontend/test-results/
+frontend/playwright-report/
+blob-report/
+
+# --- User-uploaded content ---
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# --- Logs ---
+*.log
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

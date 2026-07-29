@@ -1,0 +1,24 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+pydantic==2.13.4
+pydantic-settings==2.7.0
+google-genai==2.11.0
+openai==2.46.0
+composio==0.18.0
+aiohttp==3.11.11
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.20
+pillow==11.1.0
+aiofiles==24.1.0
+httpx==0.28.1
+email-validator==2.2.0
+python-dotenv==1.0.1
+psycopg2-binary==2.9.10
+# Testing (not needed to run the app itself, only to run the test suite)
+pytest==9.1.1
+pytest-asyncio==1.4.0

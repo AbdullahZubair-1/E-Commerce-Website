@@ -1,0 +1,99 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: chemisto_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chemisto_db
+      POSTGRES_USER: chemisto
+      POSTGRES_PASSWORD: chemisto_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chemisto -d chemisto_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend ──────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: chemisto_backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://chemisto:chemisto_pass@db:5432/chemisto_db
+      FRONTEND_URL: http://localhost:5173
+      DEBUG: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Voice Agent (Pipecat) — ONE instance serves both sites ──────────────────
+  # Each frontend tells it which site a call belongs to when connecting
+  # (via requestData), so a single running instance is enough.
+  voice-agent:
+    build:
+      context: ./voice-agent
+      dockerfile: Dockerfile
+    container_name: chemisto_voice_agent
+    restart: unless-stopped
+    env_file:
+      - ./voice-agent/.env
+    ports:
+      - "7860:7860"
+
+  # ── Frontend: Chemisto ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: chemisto_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_SITE_SLUG: chemisto
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+      - voice-agent
+
+  # ── Frontend: Chemisto Food (second storefront, same backend/DB/voice-agent) ─
+  frontend-food:
+    build:
+      context: ./frontend-food
+      dockerfile: Dockerfile
+    container_name: chemisto_food_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_SITE_SLUG: chemisto-food
+    ports:
+      - "5174:5173"
+    volumes:
+      - ./frontend-food:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+      - voice-agent
+
+volumes:
+  postgres_data:
+  uploads_data:
