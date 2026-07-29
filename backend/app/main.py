@@ -69,3 +69,16 @@ async def health_check():
             "version": settings.APP_VERSION,
         },
     }
+
+# ---- Serve the built frontend (single-container deployment) ----
+frontend_dist = Path(__file__).resolve().parent.parent / "static_frontend"
+if frontend_dist.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="frontend-assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str):
+        from fastapi.responses import FileResponse
+        candidate = frontend_dist / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(frontend_dist / "index.html")
