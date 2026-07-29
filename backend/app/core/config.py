@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Optional
 from dotenv import load_dotenv
 
@@ -11,9 +12,27 @@ from dotenv import load_dotenv
 # those integrations silently behave as "not configured" even when the
 # key is right there in .env.
 load_dotenv()
+
+
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://chemisto:chemisto_pass@localhost:5432/chemisto_db"
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _ensure_async_driver(cls, v: str) -> str:
+        """Hosting platforms (Railway, Heroku, Render, etc.) provide
+        Postgres connection strings in the plain `postgresql://` format,
+        which SQLAlchemy's async engine can't use directly -- it needs the
+        `+asyncpg` driver specified. Rewriting it here means the app works
+        correctly regardless of which format any given host hands us,
+        instead of needing every deployment's DATABASE_URL to be manually
+        edited to match."""
+        if v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
+        return v
 
     # JWT
     SECRET_KEY: str = "change-this-secret-key-in-production-minimum-32-characters"
