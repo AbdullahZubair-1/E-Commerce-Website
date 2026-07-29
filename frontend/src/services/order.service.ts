@@ -2,8 +2,8 @@ import api from './api';
 import type { APIResponse, Order, OrderSummary, PaginatedData, OrderStatus } from '@/types';
 
 export const orderService = {
-  async placeOrder(shipping_address: string, notes?: string): Promise<Order> {
-    const res = await api.post<APIResponse<Order>>('/orders/', { shipping_address, notes });
+  async placeOrder(shipping_address: string, notes?: string, customer_phone?: string): Promise<Order> {
+    const res = await api.post<APIResponse<Order>>('/orders/', { shipping_address, notes, customer_phone: customer_phone || undefined });
     return res.data.data!;
   },
 
