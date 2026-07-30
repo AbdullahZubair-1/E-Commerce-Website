@@ -10,7 +10,7 @@ export const productService = {
     if (filters.category_id) params.set('category_id', filters.category_id);
     if (filters.brand_id) params.set('brand_id', filters.brand_id);
 
-    const res = await api.get<APIResponse<PaginatedData<Product>>>(`/products?${params}`);
+    const res = await api.get<APIResponse<PaginatedData<Product>>>(`/products/?${params}`);
     return res.data.data!;
   },
 

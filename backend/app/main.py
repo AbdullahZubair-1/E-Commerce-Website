@@ -77,7 +77,23 @@ if frontend_dist.is_dir():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend(full_path: str):
+        """SPA fallback: any path that isn't an API route, /uploads, /docs,
+        or a real static asset gets index.html, so React Router can handle
+        client-side routing (e.g. a direct visit to /products/some-slug).
+
+        Critically excludes anything starting with these reserved prefixes
+        -- without this, this catch-all "matches" API paths too (like
+        /api/v1/products, requested without its real trailing slash) and
+        steals them before FastAPI's own built-in trailing-slash redirect
+        ever gets a chance to run, silently returning index.html instead of
+        real API data or a proper redirect."""
         from fastapi.responses import FileResponse
+        from fastapi import HTTPException
+
+        reserved_prefixes = ("api/", "uploads/", "docs", "redoc", "openapi.json", "health")
+        if full_path.startswith(reserved_prefixes):
+            raise HTTPException(status_code=404)
+
         candidate = frontend_dist / full_path
         if full_path and candidate.is_file():
             return FileResponse(candidate)
