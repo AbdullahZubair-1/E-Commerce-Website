@@ -6,10 +6,13 @@ const C_TOKEN = 'c_token';
 type IncomingEvent =
   | { type: 'message'; message: ChatMessage }
   | { type: 'typing'; from_user_id: string }
+  | { type: 'read'; reader_id: string }
   | { type: 'error'; detail: string };
 
 interface UseChatSocketOptions {
   onMessage: (message: ChatMessage) => void;
+  onTyping?: (fromUserId: string) => void;
+  onRead?: (readerId: string) => void;
 }
 
 /**
@@ -17,10 +20,14 @@ interface UseChatSocketOptions {
  * conversation) and keeps it alive while the page is mounted. Reconnects
  * automatically with backoff if the connection drops.
  */
-export function useChatSocket({ onMessage }: UseChatSocketOptions) {
+export function useChatSocket({ onMessage, onTyping, onRead }: UseChatSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
+  const onTypingRef = useRef(onTyping);
+  onTypingRef.current = onTyping;
+  const onReadRef = useRef(onRead);
+  onReadRef.current = onRead;
   const [connected, setConnected] = useState(false);
   const reconnectAttempt = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,6 +52,10 @@ export function useChatSocket({ onMessage }: UseChatSocketOptions) {
         const data = JSON.parse(event.data) as IncomingEvent;
         if (data.type === 'message') {
           onMessageRef.current(data.message);
+        } else if (data.type === 'typing') {
+          onTypingRef.current?.(data.from_user_id);
+        } else if (data.type === 'read') {
+          onReadRef.current?.(data.reader_id);
         }
       } catch {
         // ignore malformed frames
@@ -83,5 +94,11 @@ export function useChatSocket({ onMessage }: UseChatSocketOptions) {
     return true;
   }, []);
 
-  return { connected, sendMessage };
+  const sendTyping = useCallback((recipientId: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'typing', recipient_id: recipientId }));
+  }, []);
+
+  return { connected, sendMessage, sendTyping };
 }

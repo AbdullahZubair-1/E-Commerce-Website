@@ -84,7 +84,16 @@ class SocialService:
 
     async def list_friends(self, user_id: uuid.UUID) -> list[FriendResponse]:
         friends = await self.friend_repo.list_friends(user_id)
-        return [FriendResponse.model_validate(f) for f in friends]
+        unread = await self.message_repo.unread_counts_by_sender(user_id)
+        results = []
+        for f in friends:
+            resp = FriendResponse.model_validate(f)
+            resp.unread_count = unread.get(f.id, 0)
+            results.append(resp)
+        return results
+
+    async def total_unread_count(self, user_id: uuid.UUID) -> int:
+        return await self.message_repo.total_unread_count(user_id)
 
     async def list_incoming_requests(self, user_id: uuid.UUID) -> list[FriendRequestResponse]:
         requests = await self.friend_repo.list_incoming_pending(user_id)

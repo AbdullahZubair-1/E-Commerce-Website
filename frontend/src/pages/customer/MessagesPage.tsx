@@ -37,6 +37,10 @@ export function MessagesPage() {
   const [conversations, setConversations] = useState<Record<string, ChatMessage[]>>({});
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [draft, setDraft] = useState('');
+  const [typingFriendId, setTypingFriendId] = useState<string | null>(null);
+  const [seenByFriend, setSeenByFriend] = useState<Record<string, boolean>>({});
+  const typingClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingSentAt = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const activeFriend = friends.find((f) => f.id === activeFriendId) ?? null;
@@ -64,7 +68,10 @@ export function MessagesPage() {
 
   // Real-time incoming messages: append to whichever conversation they
   // belong to (works whether the chat is open or not, since the cache
-  // covers every friend, not just the active one).
+  // covers every friend, not just the active one). Deduped by message ID --
+  // WebSocket delivery isn't guaranteed exactly-once (e.g. React StrictMode
+  // briefly opens two connections in dev, or a reconnect could replay), so
+  // this must be idempotent rather than assuming each message arrives once.
   const handleIncoming = useCallback(
     (message: ChatMessage) => {
       const otherId = message.sender_id === user?.id ? message.recipient_id : message.sender_id;
@@ -76,15 +83,37 @@ export function MessagesPage() {
     },
     [user?.id]
   );
-  
-  const { connected, sendMessage } = useChatSocket({ onMessage: handleIncoming });
+
+  const handleTypingEvent = useCallback((fromUserId: string) => {
+    setTypingFriendId(fromUserId);
+    if (typingClearTimer.current) clearTimeout(typingClearTimer.current);
+    // No explicit "stopped typing" event from the backend -- clear it a
+    // few seconds after the last typing ping instead.
+    typingClearTimer.current = setTimeout(() => setTypingFriendId(null), 3000);
+  }, []);
+
+  const handleReadEvent = useCallback((readerId: string) => {
+    setSeenByFriend((current) => ({ ...current, [readerId]: true }));
+  }, []);
+
+  const { connected, sendMessage, sendTyping } = useChatSocket({
+    onMessage: handleIncoming,
+    onTyping: handleTypingEvent,
+    onRead: handleReadEvent,
+  });
 
   useEffect(() => {
-messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [activeFriendId, conversations]);
 
   const openConversation = async (friendId: string) => {
     setActiveFriendId(friendId);
+    // Opening a conversation marks the friend's messages read on the
+    // backend (see GET /social/messages/{friend_id}) -- reflect that
+    // locally right away too, so the sidebar badge clears instantly
+    // instead of waiting for the next full list refresh.
+    setFriends((current) => current.map((f) => (f.id === friendId ? { ...f, unread_count: 0 } : f)));
+    setSeenByFriend((current) => ({ ...current, [friendId]: false }));
     if (conversations[friendId]) return; // already loaded
     setLoadingConversation(true);
     try {
@@ -97,10 +126,23 @@ messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   };
 
+  const handleDraftChange = (value: string) => {
+    setDraft(value);
+    if (!activeFriendId) return;
+    // Throttle typing pings to at most one every 2 seconds, rather than
+    // sending one on every keystroke.
+    const now = Date.now();
+    if (now - lastTypingSentAt.current > 2000) {
+      sendTyping(activeFriendId);
+      lastTypingSentAt.current = now;
+    }
+  };
+
   const handleSend = () => {
     const content = draft.trim();
     if (!content || !activeFriendId) return;
 
+    setSeenByFriend((current) => ({ ...current, [activeFriendId]: false }));
     const sentViaSocket = sendMessage(activeFriendId, content);
     if (!sentViaSocket) {
       // Socket not connected right now -- fall back to REST so the message
@@ -257,12 +299,19 @@ messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
                         <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-white" />
                       )}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-900 truncate">
                         {f.first_name} {f.last_name}
                       </p>
-                      <p className="text-xs text-gray-400 truncate">{f.online ? 'Online' : 'Offline'}</p>
+                      <p className="text-xs text-gray-400 truncate">
+                        {typingFriendId === f.id ? <span className="text-blue-500">typing…</span> : f.online ? 'Online' : 'Offline'}
+                      </p>
                     </div>
+                    {f.unread_count > 0 && (
+                      <span className="shrink-0 bg-blue-600 text-white text-[11px] font-semibold rounded-full h-5 min-w-[20px] px-1.5 flex items-center justify-center">
+                        {f.unread_count > 9 ? '9+' : f.unread_count}
+                      </span>
+                    )}
                   </button>
                 ))
               )
@@ -330,7 +379,13 @@ messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
                   <p className="text-sm font-semibold text-gray-900">
                     {activeFriend.first_name} {activeFriend.last_name}
                   </p>
-                  <p className="text-xs text-gray-400">{activeFriend.online ? 'Online' : 'Offline'}</p>
+                  <p className="text-xs text-gray-400">
+                    {typingFriendId === activeFriend.id ? (
+                      <span className="text-blue-500 font-medium">typing…</span>
+                    ) : (
+                      activeFriend.online ? 'Online' : 'Offline'
+                    )}
+                  </p>
                 </div>
               </div>
 
@@ -339,10 +394,11 @@ messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
                 {!loadingConversation && activeMessages.length === 0 && (
                   <p className="text-sm text-gray-400 text-center">Say hi 👋</p>
                 )}
-                {activeMessages.map((m) => {
+                {activeMessages.map((m, idx) => {
                   const mine = m.sender_id === user?.id;
+                  const isLast = idx === activeMessages.length - 1;
                   return (
-                    <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                    <div key={m.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
                       <div
                         className={`rounded-2xl px-4 py-2 max-w-[75%] text-sm ${
                           mine ? 'bg-blue-600 text-white' : 'bg-white text-gray-900 shadow-sm'
@@ -350,6 +406,9 @@ messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
                       >
                         {m.content}
                       </div>
+                      {mine && isLast && activeFriendId && seenByFriend[activeFriendId] && (
+                        <span className="text-[11px] text-gray-400 mt-0.5 mr-1">Seen</span>
+                      )}
                     </div>
                   );
                 })}
@@ -360,7 +419,7 @@ messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
                 <input
                   type="text"
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
+                  onChange={(e) => handleDraftChange(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();

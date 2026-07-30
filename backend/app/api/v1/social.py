@@ -97,6 +97,18 @@ async def list_friends(
     return success_response(data=online, message="Friends list.")
 
 
+@router.get("/unread-count")
+async def unread_count(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Lightweight total-only count, for the Messages nav badge -- avoids
+    fetching the whole friends list just to show one number."""
+    service = SocialService(db)
+    count = await service.total_unread_count(current_user.id)
+    return success_response(data={"count": count}, message="Unread count retrieved.")
+
+
 # --- Messages ---
 
 @router.get("/messages/{friend_id}")
@@ -110,6 +122,12 @@ async def get_conversation(
     """Get message history with a friend (also marks their messages as read)."""
     service = SocialService(db)
     results = await service.get_conversation(current_user, friend_id, page, page_size)
+    # Real-time read receipt: tell the friend, if they're online right now,
+    # that current_user just read their messages -- this is what powers a
+    # "Seen" indicator on the sender's side, similar to Instagram/WhatsApp.
+    await chat_manager.send_to_user(
+        friend_id, {"type": "read", "reader_id": str(current_user.id)}
+    )
     return success_response(data=[m.model_dump() for m in results], message="Conversation retrieved.")
 
 

@@ -25,6 +25,7 @@ export interface Friend {
   last_name: string;
   email: string;
   online: boolean;
+  unread_count: number;
 }
 
 export interface ChatMessage {
@@ -70,6 +71,11 @@ export const socialService = {
   async listFriends(): Promise<Friend[]> {
     const res = await api.get<APIResponse<Friend[]>>('/social/friends');
     return res.data.data!;
+  },
+
+  async unreadCount(): Promise<number> {
+    const res = await api.get<APIResponse<{ count: number }>>('/social/unread-count');
+    return res.data.data!.count;
   },
 
   async getConversation(friendId: string): Promise<ChatMessage[]> {

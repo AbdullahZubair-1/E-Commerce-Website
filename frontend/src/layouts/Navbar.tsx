@@ -8,9 +8,10 @@ import {
   BuildingStorefrontIcon,
   ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useCart } from '@/hooks/useCart';
+import { socialService } from '@/services/social.service';
 import toast from 'react-hot-toast';
 
 export function Navbar() {
@@ -19,6 +20,26 @@ export function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!isAuthenticated || isOwner) return; // messages are a customer feature
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const count = await socialService.unreadCount();
+        if (!cancelled) setUnreadCount(count);
+      } catch {
+        // non-fatal -- badge just won't update this cycle
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 20000); // close-to-real-time without a dedicated global WS context
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isAuthenticated, isOwner, location.pathname]);
 
   const handleLogout = () => {
     logout();
@@ -81,10 +102,15 @@ export function Navbar() {
                 )}
                 <Link
                   to="/messages"
-                  className="flex items-center gap-2 p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors no-underline text-sm"
+                  className="relative flex items-center gap-2 p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors no-underline text-sm"
                 >
                   <ChatBubbleLeftRightIcon className="h-5 w-5" />
                   <span>Messages</span>
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-medium">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
                 </Link>
                 <Link
                   to="/profile"
@@ -147,11 +173,16 @@ export function Navbar() {
                   </Link>
                   <Link
                     to="/messages"
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 text-sm text-gray-700 no-underline"
+                    className="relative flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 text-sm text-gray-700 no-underline"
                     onClick={() => setMobileOpen(false)}
                   >
                     <ChatBubbleLeftRightIcon className="h-5 w-5" />
                     Messages
+                    {unreadCount > 0 && (
+                      <span className="bg-red-500 text-white text-[10px] rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center font-medium">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
                   </Link>
                   <Link
                     to="/orders"

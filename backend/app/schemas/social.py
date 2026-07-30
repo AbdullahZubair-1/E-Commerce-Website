@@ -41,6 +41,7 @@ class FriendResponse(BaseModel):
     first_name: str
     last_name: str
     email: str
+    unread_count: int = 0
 
     model_config = {"from_attributes": True}
 
